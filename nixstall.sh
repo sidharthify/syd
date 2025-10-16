@@ -74,7 +74,8 @@ install_pkgs() {
       echo -e "${BLUE}Nixstall:${NC} ${RED}SKIP:${NC} ${pkg} already listed"
       continue
     fi
-    if nix eval "nixpkgs#${pkg}" &>/dev/null; then
+    if nix --extra-experimental-features nix-command --extra-experimental-features flakes \
+       eval "github:NixOS/nixpkgs/nixos-unstable#${pkg}.meta.name" &>/dev/null; then
       sudo sed -i "\$i\  ${pkg}" "$PACKAGES"
       echo -e "${BLUE}Nixstall:${NC} ${GREEN}ADDED:${NC} ${pkg}"
     else
