@@ -17,22 +17,24 @@ help() {
   echo -e "${BLUE}Nixstall - a simple NixOS 'package manager helper'${NC}"
   echo
   echo -e "${GREEN}USAGE:${NC}"
-  echo "  nixstall <package> [more packages]"
-  echo "  nixstall remove <package> [more packages]"
+  echo "  nixstall install <package> [more packages]"
+  echo "  nixstall remove  <package> [more packages]"
   echo "  nixstall --reset"
   echo "  nixstall --help"
   echo
   echo -e "${GREEN}COMMANDS:${NC}"
-  echo "  <package>     Add one or more packages to your nix packages file"
+  echo "  install       Add one or more packages to your nix packages file"
   echo "  remove        Remove one or more packages from your nix packages file"
   echo "  --reset       Reset stored packages file path and rebuild command"
   echo "  --help        Show this help message and exit"
   echo
   echo -e "${GREEN}EXAMPLES:${NC}"
-  echo "  nixstall firefox"
-  echo "  nixstall vim htop curl"
+  echo "  nixstall install firefox"
+  echo "  nixstall install vim htop curl"
   echo "  nixstall remove neovim"
   echo "  nixstall --reset"
+  echo
+  echo -e "${BLUE}Current config file:${NC} $CONFIG_FILE"
 }
 
 reset_config() {
@@ -112,32 +114,35 @@ rebuild_prompt() {
 # MAIN
 # ------------------------------------------------------------
 
-case "$1" in
-  --help|-h)
-    help
-    exit 0
+subcommand="$1"
+shift || true
+
+case "$subcommand" in
+  install)
+    setup_config
+    if [[ $# -eq 0 ]]; then
+      echo -e "${RED}ERROR:${NC} Usage: nixstall install <package>"
+      exit 1
+    fi
+    install_pkgs "$@"
+    ;;
+  remove)
+    setup_config
+    if [[ $# -eq 0 ]]; then
+      echo -e "${RED}ERROR:${NC} Usage: nixstall remove <package>"
+      exit 1
+    fi
+    remove_pkgs "$@"
     ;;
   --reset)
     reset_config
-    exit 0
+    ;;
+  --help|-h|"")
+    help
+    ;;
+  *)
+    echo -e "${RED}ERROR:${NC} Unknown command: ${subcommand}"
+    echo "Run 'nixstall --help' for usage."
+    exit 1
     ;;
 esac
-
-setup_config
-
-if [[ -z "$1" ]]; then
-  echo -e "${BLUE}Nixstall:${NC} Usage: nixstall <package> or nixstall remove <package>"
-  exit 1
-fi
-
-if [[ "$1" == "remove" ]]; then
-  shift
-  if [[ -z "$1" ]]; then
-    echo -e "${RED}ERROR:${NC} Usage: nixstall remove <package>"
-    exit 1
-  fi
-  remove_pkgs "$@"
-  exit 0
-fi
-
-install_pkgs "$@"
