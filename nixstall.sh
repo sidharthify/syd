@@ -49,6 +49,7 @@ esac
 # get path
 if [[ -f "$CONFIG_FILE" ]]; then
   PACKAGES=$(grep '^packages_file=' "$CONFIG_FILE" | cut -d= -f2-)
+  REBUILD=$(grep '^rebuild_cmd=' "$CONFIG_FILE" | cut -d= -f2-)
 else
   echo -ne "${BLUE}Nixstall:${NC} Enter path to your nix packages file: "
   read -r PACKAGES
@@ -58,9 +59,20 @@ else
     exit 1
   fi
 
+  echo -ne "${BLUE}Nixstall:${NC} Enter your rebuild command (e.g. sudo nixos-rebuild switch): "
+  read -r REBUILD
+
+  if [[ -z "$REBUILD" ]]; then
+    echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} No rebuild command entered."
+    exit 1
+  fi
+
   mkdir -p "$CONFIG_DIR"
-  echo "packages_file=$PACKAGES" > "$CONFIG_FILE"
-  echo -e "${BLUE}Nixstall:${NC} Saved path to ${CONFIG_FILE}"
+  {
+    echo "packages_file=$PACKAGES"
+    echo "rebuild_cmd=$REBUILD"
+  } > "$CONFIG_FILE"
+  echo -e "${BLUE}Nixstall:${NC} Saved config to ${CONFIG_FILE}"
 fi
 
 package=$1
@@ -90,7 +102,7 @@ done
 echo -ne "${BLUE}Nixstall:${NC} Rebuild NixOS? [y/N]: "
 read -r input
 if [[ "${input,,}" == "y" ]]; then
-  sudo nixos-rebuild switch
+  bash -c "$REBUILD"
 else
   echo -e "${BLUE}Nixstall:${NC} Skipping rebuild."
 fi
