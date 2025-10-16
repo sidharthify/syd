@@ -18,7 +18,7 @@ package=$1
 
 # check input
 if [[ -z "$package" ]]; then
-  echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Usage: $0 <package-name>"
+  echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Usage: nixstall <package-name>"
   exit 1
 fi
 
