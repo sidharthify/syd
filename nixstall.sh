@@ -154,13 +154,25 @@ case "$subcommand" in
     remove_pkgs "$@"
     ;;
   list)
+  if [[ $# -ne 0 ]]; then
+      echo -e "${RED}ERROR:${NC} Usage: nixstall list"
+      exit 1
+    fi
     setup_config
     list_pkgs
     ;;
   --reset)
+  if [[ $# -ne 0 ]]; then
+      echo -e "${RED}ERROR:${NC} Usage: nixstall --reset"
+      exit 1
+    fi
     reset_config
     ;;
   --help|-h|"")
+  if [[ $# -ne 0 ]]; then
+      echo -e "${RED}ERROR:${NC} Usage: nixstall --help"
+      exit 1
+    fi
     help
     ;;
   *)
