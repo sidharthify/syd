@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -e
 
 # colors
@@ -22,7 +22,7 @@ help() {
   echo
   echo -e "${GREEN}COMMANDS:${NC}"
   echo "  <package>     Add one or more packages to your nix packages file"
-  echo "  --reset       Reset stored packages file path. This will prompt you to enter it again in the next run."
+  echo "  --reset       Reset stored packages file path (prompts again next run)"
   echo "  --help        Show this help message and exit"
   echo
   echo -e "${GREEN}EXAMPLES:${NC}"
@@ -45,13 +45,6 @@ case "$1" in
     exit 0
     ;;
 esac
-
-# reset flag
-if [[ "$1" == "--reset" ]]; then
-  rm -f "$CONFIG_FILE"
-  echo -e "${BLUE}Nixstall:${NC} Config reset. Next run will ask for path again."
-  exit 0
-fi
 
 # get path
 if [[ -f "$CONFIG_FILE" ]]; then
@@ -93,10 +86,10 @@ for pkg in "$@"; do
   fi
 done
 
-# nixos-rebuild switch
+# sudo nixos-rebuild switch
 echo -ne "${BLUE}Nixstall:${NC} Rebuild NixOS? [y/N]: "
 read -r input
-if [[ "${input:l}" == "y" ]]; then
+if [[ "${input,,}" == "y" ]]; then
   sudo nixos-rebuild switch
 else
   echo -e "${BLUE}Nixstall:${NC} Skipping rebuild."
