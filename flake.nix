@@ -16,7 +16,7 @@
 
         installPhase = ''
           mkdir -p $out/bin
-          cp nixstall.zsh $out/bin/nixstall
+          cp nixstall.sh $out/bin/nixstall
           chmod +x $out/bin/nixstall
         '';
       };
