@@ -22,11 +22,12 @@ CONFIG_FILE="$CONFIG_DIR/config"
 # ------------------------------------------------------------
 
 help() {
-  echo -e "${INFO} a simple NixOS 'package manager helper'"
+  echo -e "${INFO} a lightweight declarative package manager for NixOS"
   echo
   echo -e "${GREEN}USAGE:${NC}"
   echo "  syd install <package> [more packages]"
   echo "  syd remove  <package> [more packages]"
+  echo "  syd search  <package> [more packages]"
   echo "  syd list"
   echo "  syd --reset"
   echo "  syd --help"
@@ -35,6 +36,7 @@ help() {
   echo "  install       Add one or more packages to your nix packages file"
   echo "  remove        Remove one or more packages from your nix packages file"
   echo "  list          Show all packages currently listed in your nix file"
+  echo "  search        Search for packages in nixpkgs"
   echo "  --reset       Reset stored packages file path and rebuild command"
   echo "  --help        Show this help message and exit"
   echo
@@ -43,6 +45,8 @@ help() {
   echo "  syd install vim htop curl"
   echo "  syd remove neovim"
   echo "  syd remove neovim htop curl"
+  echo "  syd search discord"
+  echo "  syd search htop neovim curl"
   echo
   echo -e "${INFO} Current config file: $CONFIG_FILE"
 }

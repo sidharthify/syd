@@ -1,5 +1,6 @@
 # syd
-**syd** (taken from **Syd Barrett**) is a way to install packages in NixOS like how you'd do in other major linux distributions. It appends package names to your nix file automatically, so you don’t have to open and edit it every time you want to install something. It basically acts like a lightweight package manager wrapper for any distro that manages packages through editable config files instead of commands.
+**syd** (named after **Syd Barrett**) is a lightweight command-line tool for managing your NixOS packages declaratively.
+It lets you install, remove, list, and search for packages by directly editing your Nix configuration files, so you don’t have to touch them manually every time you make a change.
 
 ---
 
@@ -46,7 +47,11 @@ environment.systemPackages = import ./packages/packages.nix pkgs;
 
 Once that’s done, rebuild your system and you’re ready to start using **syd**.
 
+---
+
 ## Things to consider
 - This isn't the best written script out there. It is written to suit my own nixOS setup, so you may fork it and make your own changes in the way that it is written. You may not even have a different `package.nix` file like I do - and just have a single `configuration.nix`, so for you, this script might not work - unless you do a few changes here and there. If you do want to see how my own `package.nix` is structured, head over to [my NixOS setup](https://github.com/sidharthify/nixos-configs). You may find it in `packages/packages.nix`
 
 - I will keep updating this overtime, so one day, this may actually become quite a mature tool. But for now, use it if you REALLY want to.
+
+---
