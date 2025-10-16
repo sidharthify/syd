@@ -1,2 +1,2 @@
 # nixstall
-A personal script configured for my NixOS setup. It adds a package name under my packages.nix file through user input so I don't have to open it manually every single time I want to install a package, this makes it more generic towards other Linux distros which follow the same type of thing with thwir package maangers.
+A small personal script for my NixOS setup. It appends package names to my `packages.nix` automatically, so I don’t have to open and edit it every time I want to install something. It basically acts like a lightweight package manager wrapper for any distro that manages packages through editable config files instead of commands.
