@@ -15,6 +15,7 @@ package=$1
 if [[ -z "$package" ]]; then
   echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Usage: $0 <package-name>"
   exit 1
+fi
 
 # nixstall
 for pkg in "$@"; do
