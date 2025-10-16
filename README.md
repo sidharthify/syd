@@ -16,6 +16,64 @@ This script stores your package directory and your rebuild command inside `~/.co
 
 ---
 
+## Installation
+You can install **syd** directly from its flake. Just add it as an input to your existing system or home-manager configuration.
+
+### Example (system-wide install)
+In your `flake.nix`:
+
+```bash
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    syd.url = "github:sidharthify/syd";
+  };
+
+  outputs = { self, nixpkgs, syd, ... }: {
+    nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        ({ pkgs, ... }: {
+          environment.systemPackages = with pkgs; [
+            syd.packages.x86_64-linux.default
+          ];
+        })
+      ];
+    };
+  };
+}
+```
+
+Then rebuild your system: `sudo nixos-rebuild switch --flake .#your-hostname`
+
+Now you can use syd globally:
+
+```bash
+syd install firefox
+syd remove vim
+syd search discord
+```
+
+---
+
+### Alternative (with home-manager)
+If you’re using Home Manager, add this to your `home.nix`:
+
+```bash
+home.packages = [
+  inputs.syd.packages.x86_64-linux.default
+];
+```
+
+Then rebuild your home configuration: `home-manager switch --flake ~/.config/nixpkgs`
+
+Once installed, you can **verify**:
+
+`syd --help`
+
+---
+
 ## Adapt to your setup
 It’s recommended to create a separate Nix file to manage your packages if you haven’t already.
 
