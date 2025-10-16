@@ -14,7 +14,7 @@ nixstall --help
 - `nixstall --reset` clears the saved path
 - `nixstall --help` shows usage info
 
-This script stores your package directory inside `/.config/nixstall/config`
+This script stores your package directory and your rebuild command inside `~/.config/nixstall/config`
 
 ---
 
