@@ -1,16 +1,16 @@
-# nixstall
-Nixstall is a way to install packages in NixOS like how you'd do in other major linux distributions. It appends package names to your nix file automatically, so you don’t have to open and edit it every time you want to install something. It basically acts like a lightweight package manager wrapper for any distro that manages packages through editable config files instead of commands.
+# syd
+syd (taken from Syd Barrett) is a way to install packages in NixOS like how you'd do in other major linux distributions. It appends package names to your nix file automatically, so you don’t have to open and edit it every time you want to install something. It basically acts like a lightweight package manager wrapper for any distro that manages packages through editable config files instead of commands.
 
 ---
 
 ## Usage
-- `nixstall <pkg>` adds one or more packages to your saved config file
-- `nixstall remove <pkg>` removes one or more packages to your saved config file
-- `nixstall list` prints and counts the number of installed packages
-- `nixstall --reset` clears the saved path
-- `nixstall --help` shows usage info
+- `syd <pkg>` adds one or more packages to your saved config file
+- `syd remove <pkg>` removes one or more packages to your saved config file
+- `syd list` prints and counts the number of installed packages
+- `syd --reset` clears the saved path
+- `syd --help` shows usage info
 
-This script stores your package directory and your rebuild command inside `~/.config/nixstall/config`
+This script stores your package directory and your rebuild command inside `~/.config/syd/config`
 
 ---
 

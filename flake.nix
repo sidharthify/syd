@@ -1,5 +1,5 @@
 {
-  description = "nixstall";
+  description = "syd";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -9,21 +9,21 @@
       pkgs = import nixpkgs { inherit system; };
     in {
       packages.${system}.default = pkgs.stdenv.mkDerivation {
-        pname = "nixstall";
+        pname = "syd";
         version = "1.0";
         src = ./.;
         buildInputs = [ pkgs.zsh ];
 
         installPhase = ''
           mkdir -p $out/bin
-          cp nixstall.sh $out/bin/nixstall
-          chmod +x $out/bin/nixstall
+          cp syd.sh $out/bin/syd
+          chmod +x $out/bin/syd
         '';
       };
 
       apps.${system}.default = {
         type = "app";
-        program = "${self.packages.${system}.default}/bin/nixstall";
+        program = "${self.packages.${system}.default}/bin/syd";
       };
     };
 }
