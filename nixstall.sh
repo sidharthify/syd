@@ -24,6 +24,7 @@ help() {
   echo "  <package>     Add one or more packages to your nix packages file"
   echo "  --reset       Reset stored packages file path (prompts again next run)"
   echo "  --help        Show this help message and exit"
+  echo "  remove        Remove one or more packages from your nix packages file"
   echo
   echo -e "${GREEN}EXAMPLES:${NC}"
   echo "  nixstall firefox"
@@ -79,8 +80,42 @@ package=$1
 
 # check input
 if [[ -z "$package" ]]; then
-  echo -e "${BLUE}Nixstall:${NC} Usage: nixstall <package-name>"
+  echo -e "${BLUE}Nixstall:${NC} Usage: nixstall <package-name> or nixstall remove <package-name>"
   exit 1
+fi
+
+# nixstall remove
+if [[ "$1" == "remove" ]]; then
+  shift
+  if [[ -z "$1" ]]; then
+    echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Usage: nixstall remove <package-name>"
+    exit 1
+  fi
+
+  for pkg in "$@"; do
+    if grep -q -w "$pkg" "$PACKAGES"; then
+      sudo sed -i -E "/\<${pkg}\>/d" "$PACKAGES"
+      echo -e "${BLUE}Nixstall:${NC} ${GREEN}REMOVED:${NC} ${pkg}"
+    else
+      echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Package '${pkg}' not found in config"
+    fi
+  done
+
+  # rebuild
+  echo -ne "${BLUE}Nixstall:${NC} Rebuild NixOS? [y/N]: "
+  read -r input
+  if [[ "${input,,}" == "y" ]]; then
+    echo -e "${BLUE}Nixstall:${NC} Running: ${GREEN}${REBUILD}${NC}"
+    bash -c "$REBUILD" || {
+      echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Rebuild command failed."
+      exit 1
+    }
+
+  else
+    echo -e "${BLUE}Nixstall:${NC} Skipping rebuild."
+  fi
+
+  exit 0
 fi
 
 # nixstall
@@ -98,7 +133,7 @@ for pkg in "$@"; do
   fi
 done
 
-# sudo nixos-rebuild switch
+# rebuild
 echo -ne "${BLUE}Nixstall:${NC} Rebuild NixOS? [y/N]: "
 read -r input
 if [[ "${input,,}" == "y" ]]; then
