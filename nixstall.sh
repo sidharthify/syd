@@ -21,18 +21,20 @@ help() {
   echo "  nixstall remove  <package> [more packages]"
   echo "  nixstall --reset"
   echo "  nixstall --help"
+  echo "  nixstall list"
   echo
   echo -e "${GREEN}COMMANDS:${NC}"
   echo "  install       Add one or more packages to your nix packages file"
   echo "  remove        Remove one or more packages from your nix packages file"
   echo "  --reset       Reset stored packages file path and rebuild command"
   echo "  --help        Show this help message and exit"
+  echo "  nixstall list Show all packages currently listed in your nix file"
   echo
   echo -e "${GREEN}EXAMPLES:${NC}"
   echo "  nixstall install firefox"
   echo "  nixstall install vim htop curl"
   echo "  nixstall remove neovim"
-  echo "  nixstall --reset"
+  echo "  nixstall remove neovim htop curl"
   echo
   echo -e "${BLUE}Current config file:${NC} $CONFIG_FILE"
 }
@@ -97,6 +99,22 @@ remove_pkgs() {
   rebuild_prompt
 }
 
+list_pkgs() {
+  echo -e "${BLUE}Nixstall:${NC} Packages listed in ${PACKAGES}:"
+  pkgs=$(grep -E '^[[:space:]]*[^#[:space:]].+' "$PACKAGES" \
+    | grep -vE '(\[|\])' \
+    | sed 's/^[[:space:]]*//')
+
+  if [[ -z "$pkgs" ]]; then
+    echo "(no packages found)"
+  else
+    echo "$pkgs"
+    count=$(echo "$pkgs" | wc -l)
+    echo
+    echo -e "${BLUE}Nixstall:${NC} Total packages: ${GREEN}${count}${NC}"
+  fi
+}
+
 rebuild_prompt() {
   echo -ne "${BLUE}Nixstall:${NC} Rebuild NixOS? [y/N]: "
   read -r input
@@ -134,6 +152,10 @@ case "$subcommand" in
       exit 1
     fi
     remove_pkgs "$@"
+    ;;
+  list)
+    setup_config
+    list_pkgs
     ;;
   --reset)
     reset_config

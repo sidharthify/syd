@@ -7,12 +7,14 @@ Nixstall is a way to install packages in NixOS like how you'd do in other major 
 ```bash
 nixstall <package> [more packages]
 nixstall remove <package> [more packages]
+nixstall list
 nixstall --reset
 nixstall --help
 ```
 
 - `nixstall <pkg>` adds one or more packages to your saved config file
 - `nixstall remove <pkg>` removes one or more packages to your saved config file
+- `nixstall list` prints and counts the number of installed packages
 - `nixstall --reset` clears the saved path
 - `nixstall --help` shows usage info
 
