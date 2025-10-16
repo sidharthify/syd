@@ -11,6 +11,41 @@ NC='\033[0m'
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nixstall"
 CONFIG_FILE="$CONFIG_DIR/config"
 
+# print help
+help() {
+  echo -e "${BLUE}Nixstall - a simple NixOS 'package manager helper'${NC}"
+  echo
+  echo -e "${GREEN}USAGE:${NC}"
+  echo "  nixstall <package> [more packages]"
+  echo "  nixstall --reset"
+  echo "  nixstall --help"
+  echo
+  echo -e "${GREEN}COMMANDS:${NC}"
+  echo "  <package>     Add one or more packages to your nix packages file"
+  echo "  --reset       Reset stored packages file path. This will prompt you to enter it again in the next run."
+  echo "  --help        Show this help message and exit"
+  echo
+  echo -e "${GREEN}EXAMPLES:${NC}"
+  echo "  nixstall firefox"
+  echo "  nixstall vim htop curl"
+  echo "  nixstall --reset"
+  echo
+  echo -e "${BLUE}Current config file:${NC} $CONFIG_FILE"
+}
+
+# parse flags
+case "$1" in
+  --help|-h)
+    help
+    exit 0
+    ;;
+  --reset)
+    rm -f "$CONFIG_FILE"
+    echo -e "${BLUE}Nixstall:${NC} Config reset. Next run will ask for path again."
+    exit 0
+    ;;
+esac
+
 # reset flag
 if [[ "$1" == "--reset" ]]; then
   rm -f "$CONFIG_FILE"
