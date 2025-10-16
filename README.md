@@ -6,6 +6,7 @@ syd (taken from Syd Barrett) is a way to install packages in NixOS like how you'
 ## Usage
 - `syd <pkg>` adds one or more packages to your saved config file
 - `syd remove <pkg>` removes one or more packages to your saved config file
+- `syd search <pkg>` searches for the package in nixpkgs
 - `syd list` prints and counts the number of installed packages
 - `syd --reset` clears the saved path
 - `syd --help` shows usage info
