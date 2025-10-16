@@ -9,6 +9,11 @@ BLUE='\033[1;34m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
+# syncnix
+syncnix() {
+/etc/nixos/sync-nixos.sh "$@"
+}
+
 package=$1
 
 # check input
@@ -33,3 +38,13 @@ for pkg in "$@"; do
     echo -e "${BLUE}Nixstall:${NC} ${RED}ERROR:${NC} Package '${pkg}' not found in nixpkgs"
   fi
 done
+
+# nixos-rebuild switch
+echo -e "${BLUE}Nixstall:${NC} Rebuild NixOS? (Y/N)"
+read -r input
+
+if [[ "${input:l}" == "y" ]]; then
+  syncnix
+else
+  echo -e "${BLUE}Nixstall:${NC} Skipping rebuild."
+fi
