@@ -102,7 +102,6 @@ remove_pkgs() {
 }
 
 rebuild_prompt() {
-  echo
   echo -ne "${BLUE}Nixstall:${NC} Rebuild NixOS? [y/N]: "
   read -r input
   if [[ "${input,,}" == "y" ]]; then
