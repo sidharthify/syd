@@ -1,5 +1,5 @@
 {
-  description = "syd";
+  description = "syd - a lightweight declarative package manager helper for NixOS";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -10,20 +10,34 @@
     in {
       packages.${system}.default = pkgs.stdenv.mkDerivation {
         pname = "syd";
-        version = "1.0";
+        version = "2.0";
+
         src = ./.;
-        buildInputs = [ pkgs.zsh ];
+
+        buildInputs = [ pkgs.python3 pkgs.makeWrapper ];
 
         installPhase = ''
           mkdir -p $out/bin
-          cp syd.sh $out/bin/syd
+          cp syd.py $out/bin/syd
           chmod +x $out/bin/syd
+
+          wrapProgram $out/bin/syd \
+            --set PATH ${pkgs.python3}/bin:$PATH
         '';
       };
 
       apps.${system}.default = {
         type = "app";
         program = "${self.packages.${system}.default}/bin/syd";
+      };
+
+      devShells.${system}.default = pkgs.mkShell {
+        buildInputs = with pkgs.python3Packages; [
+          colorama
+          flake8
+          setuptools
+          wheel
+        ];
       };
     };
 }
