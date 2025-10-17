@@ -1,5 +1,5 @@
 {
-  description = "syd - a lightweight declarative package manager helper for NixOS";
+  description = "syd - a lightweight declarative Nix helper for NixOS";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -14,7 +14,13 @@
 
         src = ./.;
 
-        buildInputs = [ pkgs.python3 pkgs.makeWrapper ];
+        buildInputs = [
+          (pkgs.python3.withPackages (ps: with ps; [
+            colorama
+        ]))
+        pkgs.makeWrapper
+      ];
+
 
         installPhase = ''
           mkdir -p $out/bin
