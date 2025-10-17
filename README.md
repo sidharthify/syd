@@ -148,5 +148,6 @@ Now **syd** can manage this file automatically.
 
 * syd was originally written in bash but is now entirely in **Python 3**, making it a lot faster.
 * It expects a single `packages.nix` file by default, but you can adapt it for your own layout.
-
 For reference, see [my NixOS setup](https://github.com/sidharthify/nixos-configs) to understand how I structure my configs. (not the best, I'm aware)
+
+* An overview of syd's code can be found on [this blog](https://sidharthify.me/blogs/blog-18-10-25).
