@@ -113,7 +113,7 @@ def install_pkgs(*pkgs):
 
         result = subprocess.run(
             [
-                "nix", "--extra-experimental-features", "nix-command",
+                "/run/current-system/sw/bin/nix", "--extra-experimental-features", "nix-command",
                 "--extra-experimental-features", "flakes",
                 "eval", f"github:NixOS/nixpkgs/nixos-unstable#{pkg}.meta.name"
             ],
@@ -180,7 +180,7 @@ def search_pkgs(*pkgs):
 
         result = subprocess.run(
             [
-                "nix", "--extra-experimental-features", "nix-command",
+                "/run/current-system/sw/bin/nix", "--extra-experimental-features", "nix-command",
                 "--extra-experimental-features", "flakes",
                 "eval", f"github:NixOS/nixpkgs/nixos-unstable#{pkg}.meta.name"
             ],
