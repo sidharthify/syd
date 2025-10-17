@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import sys
 import subprocess
 from pathlib import Path
@@ -36,6 +37,7 @@ def help():
     print("  sudo syd install <package> [more packages]")
     print("  sudo syd remove  <package> [more packages]")
     print("  syd search  <package> [more packages]")
+    print("  syd isinstalled <package> [more packages]")
     print("  syd list")
     print("  syd --reset")
     print("  syd --help\n")
@@ -45,6 +47,7 @@ def help():
     print("  remove        Remove one or more packages from your nix packages file")
     print("  list          Show all packages currently listed in your nix file")
     print("  search        Search for packages in nixpkgs")
+    print("  search        Check if package is listed in your nix file")
     print("  --reset       Reset stored packages file path and rebuild command")
     print("  --help        Show this help message and exit\n")
 
@@ -203,6 +206,16 @@ def search_pkgs(*pkgs):
         else:
             print(f"{ERROR} '{pkg}' not found in nixpkgs.")
 
+def is_installed(*pkgs):
+    with open(PACKAGES, "r") as f:
+        lines = f.readlines()
+
+    for pkg in pkgs:
+        if any(re.search(rf"\b{pkg}\b", line) for line in lines):
+            print(f"{SUCCESS} Yes. '{pkg}' exists in {PACKAGES}")
+        else:
+            print(f"{ERROR} Could not find '{pkg}' in {PACKAGES}")
+
 # ------------------------------------------------------------
 # MAIN
 # ------------------------------------------------------------
@@ -248,6 +261,13 @@ def main():
             print(f"{INFO} Usage: syd search <package>")
             sys.exit(1)
         search_pkgs(*args)
+
+    # syd isinstalled
+    elif subcommand == "isinstalled":
+        if len(args) == 0:
+            print(f"{ERROR} Usage: syd isinstalled <package>")
+            sys.exit(1)
+        is_installed(*args)
 
     # syd list
     elif subcommand == "list":
