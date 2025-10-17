@@ -15,7 +15,12 @@ INFO = f"{Fore.BLUE}syd:{Style.RESET_ALL}"
 SUCCESS = f"{Fore.GREEN}SUCCESS:{Style.RESET_ALL}"
 ERROR = f"{Fore.RED}ERROR:{Style.RESET_ALL}"
 
-config_base = os.getenv("XDG_CONFIG_HOME", Path.home() / ".config")
+if os.environ.get("SUDO_USER"):
+    real_home = Path(f"/home/{os.environ['SUDO_USER']}")
+else:
+    real_home = Path.home()
+
+config_base = os.getenv("XDG_CONFIG_HOME", real_home / ".config")
 CONFIG_DIR = Path(config_base) / "syd"
 CONFIG_FILE = CONFIG_DIR / "config"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -27,8 +32,8 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 def help():
     print(f"{INFO} a lightweight declarative package manager for NixOS\n")
     print(f"{Fore.GREEN}USAGE:{Style.RESET_ALL}")
-    print("  syd install <package> [more packages]")
-    print("  syd remove  <package> [more packages]")
+    print("  sudo syd install <package> [more packages]")
+    print("  sudo syd remove  <package> [more packages]")
     print("  syd search  <package> [more packages]")
     print("  syd list")
     print("  syd --reset")
@@ -43,14 +48,26 @@ def help():
     print("  --help        Show this help message and exit\n")
 
     print(f"{Fore.GREEN}EXAMPLES:{Style.RESET_ALL}")
-    print("  syd install firefox")
-    print("  syd install vim htop curl")
-    print("  syd remove neovim")
-    print("  syd remove neovim htop curl")
+    print("  sudo syd install vim htop curl")
+    print("  sudo syd remove neovim htop curl")
     print("  syd search discord")
     print("  syd search htop neovim curl\n")
 
     print(f"{INFO} Current config file: {CONFIG_FILE}")
+
+def check_pkg_exists(pkg: str) -> bool:
+    result = subprocess.run(
+        [
+            "/run/current-system/sw/bin/nix",
+            "--extra-experimental-features", "nix-command",
+            "--extra-experimental-features", "flakes",
+            "eval",
+            f"github:NixOS/nixpkgs/nixos-unstable#{pkg}.meta.name"
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    return result.returncode == 0
 
 def reset_config():
     if CONFIG_FILE.exists():
@@ -107,29 +124,25 @@ def rebuild_prompt():
 
 def install_pkgs(*pkgs):
     for pkg in pkgs:
-        if any(pkg in line.split() for line in open(PACKAGES)):
+        with open(PACKAGES, "r") as f:
+            lines = f.readlines()
+
+        if any(pkg in line for line in lines):
             print(f"{INFO} {ERROR} {pkg} already listed.")
             continue
 
-        result = subprocess.run(
-            [
-                "/run/current-system/sw/bin/nix", "--extra-experimental-features", "nix-command",
-                "--extra-experimental-features", "flakes",
-                "eval", f"github:NixOS/nixpkgs/nixos-unstable#{pkg}.meta.name"
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        if check_pkg_exists(pkg):
+            insert_index = len(lines)
+            for i, line in enumerate(lines):
+                if "]" in line:
+                    insert_index = i
+                    break
 
-        if result.returncode == 0:
-            subprocess.run( # use sed directly cuz it's easier
-                [
-                    "sudo", "sed", "-i",
-                    f"$i\\  {pkg}",
-                    str(PACKAGES)
-                ],
-                check=True
-            )
+            lines.insert(insert_index, f"  {pkg}\n")
+
+            with open(PACKAGES, "w") as f:
+                f.writelines(lines)
+
             print(f"{SUCCESS} Added '{pkg}' to {PACKAGES}")
         else:
             print(f"{ERROR} Package '{pkg}' not found in nixpkgs.")
@@ -138,19 +151,20 @@ def install_pkgs(*pkgs):
 
 def remove_pkgs(*pkgs):
     for pkg in pkgs:
-        if any(pkg in line.split() for line in open(PACKAGES)):
-            subprocess.run(
-                [
-                    "sudo", "sed", "-i", "-E",
-                    f"/\\b{pkg}\\b/d",
-                    str(PACKAGES)
-                ],
-                check=True
-            )
-            print(f"{SUCCESS} Removed {pkg}")
-        else:
-            print(f"{ERROR} Package '{pkg}' not found in config")
-    
+        with open(PACKAGES, "r") as f:
+            lines = f.readlines()
+
+        new_lines = [line for line in lines if pkg not in line.strip()]
+
+        if len(new_lines) == len(lines):
+            print(f"{ERROR} Package '{pkg}' not found in config.")
+            continue
+
+        with open(PACKAGES, "w") as f:
+            f.writelines(new_lines)
+
+        print(f"{SUCCESS} Removed {pkg}")
+
     rebuild_prompt()
 
 def list_pkgs():
@@ -177,18 +191,7 @@ def list_pkgs():
 
 def search_pkgs(*pkgs):
     for pkg in pkgs:
-
-        result = subprocess.run(
-            [
-                "/run/current-system/sw/bin/nix", "--extra-experimental-features", "nix-command",
-                "--extra-experimental-features", "flakes",
-                "eval", f"github:NixOS/nixpkgs/nixos-unstable#{pkg}.meta.name"
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
-        if result.returncode == 0:
+        if check_pkg_exists(pkg):
             print(f"{INFO} '{pkg}' exists in nixpkgs.")
         else:
             print(f"{ERROR} '{pkg}' not found in nixpkgs.")
@@ -207,6 +210,13 @@ def main():
 
     global PACKAGES, REBUILD
     PACKAGES, REBUILD = setup_config()
+
+    # check for sudo in syd install and remove since they need elevated perms
+    if subcommand in ["install", "remove",]:
+        if os.geteuid() != 0:
+            print(f"{ERROR} Root permissions required to modify {PACKAGES}")
+            print(f"{INFO} Try: sudo syd {subcommand} <package>")
+            sys.exit(1)
 
     # syd install
     if subcommand == "install":

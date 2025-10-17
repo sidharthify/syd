@@ -28,7 +28,7 @@
           chmod +x $out/bin/syd
 
           wrapProgram $out/bin/syd \
-            --set PATH ${pkgs.python3}/bin:$PATH
+            --set PATH ${pkgs.nix}/bin:${pkgs.python3}/bin:$PATH
         '';
       };
 
