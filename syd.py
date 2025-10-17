@@ -15,8 +15,9 @@ INFO = f"{Fore.BLUE}syd:{Style.RESET_ALL}"
 SUCCESS = f"{Fore.GREEN}SUCCESS:{Style.RESET_ALL}"
 ERROR = f"{Fore.RED}ERROR:{Style.RESET_ALL}"
 
-if os.environ.get("SUDO_USER"):
-    real_home = Path(f"/home/{os.environ['SUDO_USER']}")
+sudo_user = os.environ.get("SUDO_USER")
+if sudo_user and sudo_user != "root":
+    real_home = Path(f"/home/{sudo_user}")
 else:
     real_home = Path.home()
 
@@ -84,13 +85,11 @@ def setup_config():
         with open(CONFIG_FILE, "r") as f:
             for line in f:
                 if line.startswith("packages_file="):
-                    PACKAGES = line.split("=", 1)[1].strip()
+                    PACKAGES = Path(line.split("=", 1)[1].strip())
                 elif line.startswith("rebuild_cmd="):
                     REBUILD = line.split("=", 1)[1].strip()
     else:
-        packages_path = input(f"{INFO} Enter path to your nix packages file: ").strip()
-        PACKAGES = Path(packages_path)
-
+        PACKAGES = Path(input(f"{INFO} Enter path to your nix packages file: ").strip())
         if not PACKAGES.exists():
             print(f"{ERROR} File not found: {PACKAGES}")
             sys.exit(1)
@@ -100,8 +99,6 @@ def setup_config():
             print(f"{ERROR} No rebuild command entered.")
             sys.exit(1)
 
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
         with open(CONFIG_FILE, "w") as f:
             f.write(f"packages_file={PACKAGES}\n")
             f.write(f"rebuild_cmd={REBUILD}\n")
@@ -110,17 +107,27 @@ def setup_config():
 
     return PACKAGES, REBUILD
 
+
 def rebuild_prompt():
     read = input(f"{INFO} Rebuild NixOS? [y/N]: ").strip().lower()
-
-    if read == 'y':
-        print(f"{INFO} Running: {REBUILD}")
-        result = subprocess.run(REBUILD, shell=True)
-        if result.returncode != 0:
-            print(f"{ERROR} Rebuild command failed.")
-            sys.exit(1)
-    else:
+    if read != "y":
         print(f"{INFO} Skipping rebuild.")
+        return
+
+    cmd = REBUILD.strip()
+    if os.geteuid() == 0 and cmd.startswith("sudo "):
+        cmd = cmd.replace("sudo ", "", 1)
+        print(f"{INFO} Running (sudo stripped): {cmd}")
+
+    env = os.environ.copy()
+    env["PATH"] = "/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/run/current-system/sw/bin"
+
+    print(f"{INFO} Running: {cmd}")
+    result = subprocess.run(cmd, shell=True, env=env)
+
+    if result.returncode != 0:
+        print(f"{ERROR} Rebuild command failed.")
+        sys.exit(1)
 
 def install_pkgs(*pkgs):
     for pkg in pkgs:
