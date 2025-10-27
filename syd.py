@@ -45,6 +45,7 @@ def help():
     print(f"{Fore.GREEN}COMMANDS:{Style.RESET_ALL}")
     print("  install       Add one or more packages to your nix packages file")
     print("  remove        Remove one or more packages from your nix packages file")
+    print("  comment       Comment one or more packages from your nix packages file"
     print("  list          Show all packages currently listed in your nix file")
     print("  search        Search for packages in nixpkgs")
     print("  search        Check if package is listed in your nix file")
@@ -177,6 +178,26 @@ def remove_pkgs(*pkgs):
 
     rebuild_prompt()
 
+def comment_pkgs(*pkgs):
+    for pkg in pkgs:
+        with open(PACKAGES, "r") as f:
+            lines = f.read()
+
+        pattern = rf"\b{re.escape(pkg)}\b"
+
+        new_lines = re.sub(pattern, f"# {pkg}", lines)
+
+        if len(new_lines) == len(lines):
+            print(f"{ERROR} Package '{pkg}' not found in config.")
+            continue
+
+        with open(PACKAGES, "w") as f:
+            f.write(new_lines)
+
+        print(f"{SUCCESS} Commented out {pkg}")
+
+    rebuild_prompt()
+
 def list_pkgs():
     print(f"{INFO} Packages listed in {PACKAGES}:")
 
@@ -250,9 +271,17 @@ def main():
     elif subcommand == "remove":
         PACKAGES, REBUILD = setup_config()
         if len(args) == 0:
-            print(f"{INFO} Usage: syd remove <package>")
+            print(f"{INFO} Usage: syd comment <package>")
             sys.exit(1)
         remove_pkgs(*args)
+
+    # syd comment
+    elif subcommand == "comment":
+        PACKAGES, REBUILD = setup_config()
+        if len(args) == 0:
+            print(f"{INFO} Usage: syd comment <package>")
+            sys.exit(1)
+        comment_pkgs(*args)
 
     # syd search
     elif subcommand == "search":

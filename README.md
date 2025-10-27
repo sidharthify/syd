@@ -9,6 +9,7 @@ It lets you install, remove, list, and search for packages by directly editing y
 
 * `syd install <pkg>` — add one or more packages to your saved Nix config
 * `syd remove <pkg>` — remove one or more packages from your config
+* `syd comment <pkg>` — comment one or more packages from your config
 * `syd search <pkg>` — search for a package in nixpkgs
 * `syd isinstalled <pkg>` — check if package is listed or not
 * `syd list` — print and count the number of installed packages
