@@ -271,7 +271,7 @@ def main():
     elif subcommand == "remove":
         PACKAGES, REBUILD = setup_config()
         if len(args) == 0:
-            print(f"{INFO} Usage: syd comment <package>")
+            print(f"{INFO} Usage: syd remove <package>")
             sys.exit(1)
         remove_pkgs(*args)
 
