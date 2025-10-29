@@ -45,7 +45,7 @@ def help():
     print(f"{Fore.GREEN}COMMANDS:{Style.RESET_ALL}")
     print("  install       Add one or more packages to your nix packages file")
     print("  remove        Remove one or more packages from your nix packages file")
-    print("  comment       Comment one or more packages from your nix packages file"
+    print("  comment       Comment one or more packages from your nix packages file")
     print("  list          Show all packages currently listed in your nix file")
     print("  search        Search for packages in nixpkgs")
     print("  search        Check if package is listed in your nix file")
