@@ -252,8 +252,8 @@ def main():
     global PACKAGES, REBUILD
     PACKAGES, REBUILD = setup_config()
 
-    # check for sudo in syd install and remove since they need elevated perms
-    if subcommand in ["install", "remove",]:
+    # check for sudo in certain functions since they need elevated perms
+    if subcommand in ["install", "remove", "comment"]:
         if os.geteuid() != 0:
             print(f"{ERROR} Root permissions required to modify {PACKAGES}")
             print(f"{INFO} Try: sudo syd {subcommand} <package>")
