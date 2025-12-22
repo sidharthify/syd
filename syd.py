@@ -37,7 +37,7 @@ def help():
     print("  sudo syd install <package> [more packages]")
     print("  sudo syd remove  <package> [more packages]")
     print("  syd search  <package> [more packages]")
-    print("  syd isinstalled <package> [more packages]")
+    print("  syd has <package> [more packages]")
     print("  syd list")
     print("  syd --reset")
     print("  syd --help\n")
@@ -48,7 +48,7 @@ def help():
     print("  comment       Comment one or more packages from your nix packages file")
     print("  list          Show all packages currently listed in your nix file")
     print("  search        Search for packages in nixpkgs")
-    print("  search        Check if package is listed in your nix file")
+    print("  has           Check if package is listed in your nix file")
     print("  --reset       Reset stored packages file path and rebuild command")
     print("  --help        Show this help message and exit\n")
 
@@ -291,10 +291,10 @@ def main():
             sys.exit(1)
         search_pkgs(*args)
 
-    # syd isinstalled
-    elif subcommand == "isinstalled":
+    # syd has
+    elif subcommand == "has":
         if len(args) == 0:
-            print(f"{ERROR} Usage: syd isinstalled <package>")
+            print(f"{ERROR} Usage: syd has <package>")
             sys.exit(1)
         is_installed(*args)
 

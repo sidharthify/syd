@@ -11,7 +11,7 @@ It lets you install, remove, list, and search for packages by directly editing y
 * `syd remove <pkg>` — remove one or more packages from your config
 * `syd comment <pkg>` — comment one or more packages from your config
 * `syd search <pkg>` — search for a package in nixpkgs
-* `syd isinstalled <pkg>` — check if package is listed or not
+* `syd has <pkg>` — check if package is listed or not
 * `syd list` — print and count the number of installed packages
 * `syd --reset` — reset your stored config path and rebuild command
 * `syd --help` — show usage info
