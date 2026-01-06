@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
  # syd
  # Copyright (c) 2025 Sidharth Sharma.
  # 
@@ -14,7 +16,6 @@
  # along with this program. If not, see <http://www.gnu.org/licenses/>.
  #
 
-#!/usr/bin/env python3
 import os
 import re
 import sys
