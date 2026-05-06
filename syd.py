@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
  # syd
- # Copyright (c) 2025 Sidharth Sharma.
+ # Copyright (c) 2026 Siddhi.
  # 
  # This program is free software: you can redistribute it and/or modify  
  # it under the terms of the GNU General Public License as published by  
