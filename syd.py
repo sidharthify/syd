@@ -113,8 +113,29 @@ def find_similar_packages(pkg: str) -> dict:
         if len(parts) >= 3:
             pkg_name = '.'.join(parts[2:])
             packages[pkg_name] = value.get("description", "No description")
-    
-    return packages
+            
+    search_lower = pkg.lower()
+    def score(name):
+        name_lower = name.lower()
+        s = 0
+        if search_lower == name_lower:
+            s -= 1000
+        elif name_lower.startswith(search_lower):
+            s -= 500
+        elif search_lower in name_lower:
+            if f"-{search_lower}" in name_lower or f"_{search_lower}" in name_lower:
+                s -= 300
+            else:
+                s -= 100
+        else:
+            s += 500
+
+        s += len(name_lower) * 2
+        s += name_lower.count('-') * 10
+        return s
+
+    sorted_names = sorted(packages.keys(), key=score)
+    return {k: packages[k] for k in sorted_names}
 
 def interactive_install_prompt(pkg: str, lines: list):
     similar = find_similar_packages(pkg)
