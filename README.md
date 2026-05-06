@@ -16,6 +16,9 @@ It lets you install, remove, list, and search for packages by directly editing y
 * `syd --reset` — reset your stored config path and rebuild command
 * `syd --help` — show usage info
 
+### Smart Search & Typo Detection
+If you misspell a package or search for a nested package (e.g., `qtwebengine`), **syd** will automatically search nixpkgs and present a "Did you mean:" interactive menu. You can pick the correct package from the list to install it immediately. (This is probably my favourite feature)
+
 The config is stored in `~/.config/syd/config`, which remembers:
 
 * your Nix packages file path (e.g. `/etc/nixos/packages.nix`)

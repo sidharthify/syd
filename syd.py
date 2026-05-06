@@ -19,6 +19,7 @@
 import os
 import re
 import sys
+import json
 import subprocess
 from pathlib import Path
 from colorama import Fore, Style, init
@@ -91,6 +92,79 @@ def check_pkg_exists(pkg: str) -> bool:
     )
     return result.returncode == 0
 
+def find_similar_packages(pkg: str) -> dict:
+    print(f"{INFO} '{pkg}' not found exactly. Searching nixpkgs for similar packages (this may take a moment)...")
+    result = subprocess.run(
+        ["/run/current-system/sw/bin/nix", "search", "nixpkgs", pkg, "--json"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return {}
+    
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+    
+    packages = {}
+    for key, value in data.items():
+        parts = key.split('.')
+        if len(parts) >= 3:
+            pkg_name = '.'.join(parts[2:])
+            packages[pkg_name] = value.get("description", "No description")
+    
+    return packages
+
+def interactive_install_prompt(pkg: str, lines: list):
+    similar = find_similar_packages(pkg)
+    if not similar:
+        print(f"{ERROR} Package '{pkg}' not found in nixpkgs, and no similar packages found.")
+        return False
+        
+    print(f"\n{INFO} Did you mean:")
+    pkg_names = list(similar.keys())[:10]
+    for i, name in enumerate(pkg_names, 1):
+        print(f"  {i}) {name} - {similar[name]}")
+        
+    try:
+        choice = input(f"\n{INFO} Enter the number to install, or 0 to cancel: ").strip()
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(pkg_names):
+                selected = pkg_names[idx-1]
+                print(f"{INFO} You selected {selected}.")
+                
+                if any(selected in line for line in lines):
+                    print(f"{INFO} {ERROR} {selected} already listed.")
+                    return False
+                
+                _do_install(lines, selected)
+                return True
+            else:
+                print(f"{INFO} Cancelled.")
+                return False
+        else:
+            print(f"{INFO} Cancelled.")
+            return False
+    except KeyboardInterrupt:
+        print(f"\n{INFO} Cancelled.")
+        return False
+
+def _do_install(lines, pkg):
+    insert_index = len(lines)
+    for i, line in enumerate(lines):
+        if "]" in line:
+            insert_index = i
+            break
+
+    lines.insert(insert_index, f"  {pkg}\n")
+
+    with open(PACKAGES, "w") as f:
+        f.writelines(lines)
+
+    print(f"{SUCCESS} Added '{pkg}' to {PACKAGES}")
+
 def reset_config():
     if CONFIG_FILE.exists():
         CONFIG_FILE.unlink()
@@ -151,6 +225,7 @@ def rebuild_prompt():
         sys.exit(1)
 
 def install_pkgs(*pkgs):
+    installed_any = False
     for pkg in pkgs:
         with open(PACKAGES, "r") as f:
             lines = f.readlines()
@@ -160,22 +235,14 @@ def install_pkgs(*pkgs):
             continue
 
         if check_pkg_exists(pkg):
-            insert_index = len(lines)
-            for i, line in enumerate(lines):
-                if "]" in line:
-                    insert_index = i
-                    break
-
-            lines.insert(insert_index, f"  {pkg}\n")
-
-            with open(PACKAGES, "w") as f:
-                f.writelines(lines)
-
-            print(f"{SUCCESS} Added '{pkg}' to {PACKAGES}")
+            _do_install(lines, pkg)
+            installed_any = True
         else:
-            print(f"{ERROR} Package '{pkg}' not found in nixpkgs.")
+            if interactive_install_prompt(pkg, lines):
+                installed_any = True
 
-    rebuild_prompt()
+    if installed_any:
+        rebuild_prompt()
 
 def remove_pkgs(*pkgs):
     for pkg in pkgs:
@@ -240,9 +307,36 @@ def list_pkgs():
 def search_pkgs(*pkgs):
     for pkg in pkgs:
         if check_pkg_exists(pkg):
-            print(f"{INFO} '{pkg}' exists in nixpkgs.")
+            print(f"{SUCCESS} '{pkg}' exists in nixpkgs.")
         else:
-            print(f"{ERROR} '{pkg}' not found in nixpkgs.")
+            similar = find_similar_packages(pkg)
+            if not similar:
+                print(f"{ERROR} '{pkg}' not found in nixpkgs.")
+                continue
+                
+            print(f"\n{INFO} Did you mean:")
+            pkg_names = list(similar.keys())[:10]
+            for i, name in enumerate(pkg_names, 1):
+                print(f"  {i}) {name} - {similar[name]}")
+                
+            try:
+                choice = input(f"\n{INFO} Enter the number to install, or 0 to cancel: ").strip()
+                if choice.isdigit():
+                    idx = int(choice)
+                    if 1 <= idx <= len(pkg_names):
+                        selected = pkg_names[idx-1]
+                        print(f"{INFO} You selected {selected}.")
+                        if os.geteuid() != 0:
+                            print(f"{INFO} Elevating permissions to install...")
+                            subprocess.run(["sudo", sys.argv[0], "install", selected])
+                        else:
+                            install_pkgs(selected)
+                    else:
+                        print(f"{INFO} Cancelled.")
+                else:
+                    print(f"{INFO} Cancelled.")
+            except KeyboardInterrupt:
+                print(f"\n{INFO} Cancelled.")
 
 def is_installed(*pkgs):
     with open(PACKAGES, "r") as f:
