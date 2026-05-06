@@ -22,6 +22,7 @@ import sys
 import json
 import subprocess
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import Fore, Style, init
 
 init(autoreset=True)
@@ -173,18 +174,13 @@ def interactive_install_prompt(pkg: str, lines: list):
         return False
 
 def _do_install(lines, pkg):
+    """Mutates lines in memory only. Caller is responsible for writing to disk."""
     insert_index = len(lines)
     for i, line in enumerate(lines):
         if "]" in line:
             insert_index = i
             break
-
     lines.insert(insert_index, f"  {pkg}\n")
-
-    with open(PACKAGES, "w") as f:
-        f.writelines(lines)
-
-    print(f"{SUCCESS} Added '{pkg}' to {PACKAGES}")
 
 def reset_config():
     if CONFIG_FILE.exists():
@@ -247,61 +243,79 @@ def rebuild_prompt():
 
 def install_pkgs(*pkgs):
     installed_any = False
-    for pkg in pkgs:
-        with open(PACKAGES, "r") as f:
-            lines = f.readlines()
 
+    # Read the file once
+    with open(PACKAGES, "r") as f:
+        lines = f.readlines()
+
+    # Check all packages in parallel
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(check_pkg_exists, pkg): pkg for pkg in pkgs}
+        results = {}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
+    for pkg in pkgs:
         if any(pkg in line for line in lines):
             print(f"{INFO} {ERROR} {pkg} already listed.")
             continue
 
-        if check_pkg_exists(pkg):
+        if results[pkg]:
             _do_install(lines, pkg)
+            print(f"{SUCCESS} Added '{pkg}' to {PACKAGES}")
             installed_any = True
         else:
             if interactive_install_prompt(pkg, lines):
                 installed_any = True
 
+    # Write to disk once after all modifications
     if installed_any:
+        with open(PACKAGES, "w") as f:
+            f.writelines(lines)
         rebuild_prompt()
 
 def remove_pkgs(*pkgs):
+    # Read once
+    with open(PACKAGES, "r") as f:
+        lines = f.readlines()
+
+    removed_any = False
     for pkg in pkgs:
-        with open(PACKAGES, "r") as f:
-            lines = f.readlines()
-
         new_lines = [line for line in lines if pkg not in line.strip()]
-
         if len(new_lines) == len(lines):
             print(f"{ERROR} Package '{pkg}' not found in config.")
-            continue
+        else:
+            lines = new_lines
+            print(f"{SUCCESS} Removed {pkg}")
+            removed_any = True
 
+    # Write once
+    if removed_any:
         with open(PACKAGES, "w") as f:
-            f.writelines(new_lines)
-
-        print(f"{SUCCESS} Removed {pkg}")
-
-    rebuild_prompt()
+            f.writelines(lines)
+        rebuild_prompt()
 
 def comment_pkgs(*pkgs):
+    # Read once
+    with open(PACKAGES, "r") as f:
+        content = f.read()
+
+    commented_any = False
     for pkg in pkgs:
-        with open(PACKAGES, "r") as f:
-            lines = f.read()
-
         pattern = rf"\b{re.escape(pkg)}\b"
-
-        new_lines = re.sub(pattern, f"# {pkg}", lines)
-
-        if len(new_lines) == len(lines):
+        new_content = re.sub(pattern, f"# {pkg}", content)
+        if new_content == content:
             print(f"{ERROR} Package '{pkg}' not found in config.")
-            continue
+        else:
+            content = new_content
+            print(f"{SUCCESS} Commented out {pkg}")
+            commented_any = True
 
+    # Write once
+    if commented_any:
         with open(PACKAGES, "w") as f:
-            f.write(new_lines)
-
-        print(f"{SUCCESS} Commented out {pkg}")
-
-    rebuild_prompt()
+            f.write(content)
+        rebuild_prompt()
 
 def list_pkgs():
     print(f"{INFO} Packages listed in {PACKAGES}:")
@@ -326,20 +340,27 @@ def list_pkgs():
     print(f"\n{INFO} Total packages: {len(pkgs)}")
 
 def search_pkgs(*pkgs):
+    # Check all packages in parallel
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(check_pkg_exists, pkg): pkg for pkg in pkgs}
+        results = {}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
     for pkg in pkgs:
-        if check_pkg_exists(pkg):
+        if results[pkg]:
             print(f"{SUCCESS} '{pkg}' exists in nixpkgs.")
         else:
             similar = find_similar_packages(pkg)
             if not similar:
                 print(f"{ERROR} '{pkg}' not found in nixpkgs.")
                 continue
-                
+
             print(f"\n{INFO} Did you mean:")
             pkg_names = list(similar.keys())[:10]
             for i, name in enumerate(pkg_names, 1):
                 print(f"  {i}) {name} - {similar[name]}")
-                
+
             try:
                 choice = input(f"\n{INFO} Enter the number to install, or 0 to cancel: ").strip()
                 if choice.isdigit():
