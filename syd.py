@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import json
+import datetime
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -485,6 +486,10 @@ def main():
     that's worth cleaning up). Root check for install/remove/comment happens
     before dispatch.
     '''
+    today = datetime.date.today()
+    if today.month == 1 and today.day == 6:
+        print(f"\n\033[1m\033[3m{Fore.BLUE}Shine on, you crazy diamond!\n{Style.RESET_ALL}")
+
     if len(sys.argv) < 2:
         help()
         sys.exit(0)
