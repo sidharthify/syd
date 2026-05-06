@@ -349,7 +349,9 @@ def search_pkgs(*pkgs):
                         print(f"{INFO} You selected {selected}.")
                         if os.geteuid() != 0:
                             print(f"{INFO} Elevating permissions to install...")
-                            subprocess.run(["sudo", sys.argv[0], "install", selected])
+                            env = os.environ.copy()
+                            env["PATH"] = "/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/run/current-system/sw/bin"
+                            subprocess.run(["sudo", sys.argv[0], "install", selected], env=env)
                         else:
                             install_pkgs(selected)
                     else:
