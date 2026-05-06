@@ -35,12 +35,18 @@ INFO = f"{Fore.BLUE}syd:{Style.RESET_ALL}"
 SUCCESS = f"{Fore.GREEN}SUCCESS:{Style.RESET_ALL}"
 ERROR = f"{Fore.RED}ERROR:{Style.RESET_ALL}"
 
+# When syd runs with sudo, SUDO_USER holds the original user's name.
+# We use that to resolve their real home dir instead of /root.
+# Falls back to Path.home() if not running under sudo (or if somehow root is the real user).
 sudo_user = os.environ.get("SUDO_USER")
 if sudo_user and sudo_user != "root":
     real_home = Path(f"/home/{sudo_user}")
 else:
     real_home = Path.home()
 
+# Respects XDG_CONFIG_HOME if set, otherwise falls back to ~/.config.
+# Wrapping in Path() handles the case where XDG_CONFIG_HOME is a string from the env.
+# mkdir runs at import time, so CONFIG_DIR is guaranteed to exist before anything else runs.
 config_base = os.getenv("XDG_CONFIG_HOME", real_home / ".config")
 CONFIG_DIR = Path(config_base) / "syd"
 CONFIG_FILE = CONFIG_DIR / "config"
@@ -51,6 +57,10 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 # ------------------------------------------------------------
 
 def help():
+    '''
+    Prints usage info, available commands, and examples.
+    Also shows the current config file path at the bottom.
+    '''
     print(f"{INFO} a lightweight declarative package manager for NixOS\n")
     print(f"{Fore.GREEN}USAGE:{Style.RESET_ALL}")
     print("  sudo syd install <package> [more packages]")
@@ -80,6 +90,12 @@ def help():
     print(f"{INFO} Current config file: {CONFIG_FILE}")
 
 def check_pkg_exists(pkg: str) -> bool:
+    '''
+    Checks if a package exists in nixpkgs by evaluating its .name attribute.
+    Uses nix eval; requires nix-command and flakes experimental features.
+    Returns True if the package is found, False otherwise.
+    Note: hardcodes the nix binary path to /run/current-system/sw/bin/nix.
+    '''
     result = subprocess.run(
         [
             "/run/current-system/sw/bin/nix",
@@ -94,6 +110,13 @@ def check_pkg_exists(pkg: str) -> bool:
     return result.returncode == 0
 
 def find_similar_packages(pkg: str) -> dict:
+    '''
+    Runs `nix search nixpkgs <pkg> --json` and returns a sorted dict of
+    {pkg_name: description} for matches found.
+    The scoring function prioritises exact/prefix matches and penalises
+    longer names and names with more hyphens, so cleaner matches bubble up.
+    Returns an empty dict if the search fails or finds nothing.
+    '''
     print(f"{INFO} '{pkg}' not found exactly. Searching nixpkgs for similar packages (this may take a moment)...")
     result = subprocess.run(
         ["/run/current-system/sw/bin/nix", "search", "nixpkgs", pkg, "--json"],
@@ -139,6 +162,13 @@ def find_similar_packages(pkg: str) -> dict:
     return {k: packages[k] for k in sorted_names}
 
 def interactive_install_prompt(pkg: str, lines: list):
+    '''
+    Called when a package isn't found exactly. Shows up to 10 similar packages
+    and lets the user pick one to install by number.
+    Passes the already-read `lines` list into _do_install to avoid re-reading
+    the file. Caller is still responsible for writing back to disk.
+    Returns True if something was installed, False otherwise.
+    '''
     similar = find_similar_packages(pkg)
     if not similar:
         print(f"{ERROR} Package '{pkg}' not found in nixpkgs, and no similar packages found.")
@@ -174,7 +204,11 @@ def interactive_install_prompt(pkg: str, lines: list):
         return False
 
 def _do_install(lines, pkg):
-    """Mutates lines in memory only. Caller is responsible for writing to disk."""
+    '''
+    Inserts the package name into `lines` just before the closing `]`.
+    Mutates the list in place, does not touch the file.
+    If no `]` is found, appends to the end (shouldn't happen with a valid packages.nix).
+    '''
     insert_index = len(lines)
     for i, line in enumerate(lines):
         if "]" in line:
@@ -183,6 +217,10 @@ def _do_install(lines, pkg):
     lines.insert(insert_index, f"  {pkg}\n")
 
 def reset_config():
+    '''
+    Deletes the config file so the next run prompts for the packages file
+    path and rebuild command again.
+    '''
     if CONFIG_FILE.exists():
         CONFIG_FILE.unlink()
         print(f"{INFO} Config reset. Next run will ask for path and rebuild command again.")
@@ -190,6 +228,12 @@ def reset_config():
         print(f"{ERROR} No config file found at {CONFIG_FILE}")
 
 def setup_config():
+    '''
+    Reads the config file if it exists, otherwise prompts the user to enter
+    the packages file path and rebuild command, then saves them.
+    Exits if the given packages file doesn't exist or rebuild command is empty.
+    Returns (PACKAGES, REBUILD) as (Path, str).
+    '''
     PACKAGES = None
     REBUILD = None
 
@@ -221,6 +265,13 @@ def setup_config():
 
 
 def rebuild_prompt():
+    '''
+    Asks whether to run the rebuild command after a config change.
+    If already running as root and the command starts with `sudo`, strips it
+    to avoid a `sudo` inside a root shell.
+    Exits with code 1 if the rebuild fails.
+    Note: uses a hardcoded PATH to ensure NixOS tools are reachable.
+    '''
     read = input(f"{INFO} Rebuild NixOS? [y/N]: ").strip().lower()
     if read != "y":
         print(f"{INFO} Skipping rebuild.")
@@ -242,6 +293,12 @@ def rebuild_prompt():
         sys.exit(1)
 
 def install_pkgs(*pkgs):
+    '''
+    Installs one or more packages into the packages file.
+    Reads the file once, checks all packages in parallel via ThreadPoolExecutor,
+    then writes back once at the end if anything was added.
+    Falls back to interactive_install_prompt() for packages not found exactly.
+    '''
     installed_any = False
 
     # Read the file once
@@ -275,13 +332,18 @@ def install_pkgs(*pkgs):
         rebuild_prompt()
 
 def remove_pkgs(*pkgs):
+    '''
+    Removes one or more packages from the packages file.
+    Does a word-boundary regex match on each line to be safe.
+    Reads once, filters in memory, writes once at the end.
+    '''
     # Read once
     with open(PACKAGES, "r") as f:
         lines = f.readlines()
 
     removed_any = False
     for pkg in pkgs:
-        new_lines = [line for line in lines if pkg not in line.strip()]
+        new_lines = [line for line in lines if not re.search(rf"\b{re.escape(pkg)}\b", line)]
         if len(new_lines) == len(lines):
             print(f"{ERROR} Package '{pkg}' not found in config.")
         else:
@@ -289,13 +351,17 @@ def remove_pkgs(*pkgs):
             print(f"{SUCCESS} Removed {pkg}")
             removed_any = True
 
-    # Write once
     if removed_any:
         with open(PACKAGES, "w") as f:
             f.writelines(lines)
         rebuild_prompt()
 
 def comment_pkgs(*pkgs):
+    '''
+    Comments out one or more packages using a word-boundary regex replace.
+    Operates on the full file content as a string rather than line-by-line,
+    so it handles any formatting. Reads and writes once.
+    '''
     # Read once
     with open(PACKAGES, "r") as f:
         content = f.read()
@@ -318,6 +384,11 @@ def comment_pkgs(*pkgs):
         rebuild_prompt()
 
 def list_pkgs():
+    '''
+    Prints all active (non-commented) packages from the packages file,
+    skipping blank lines, comments, and the `[` / `]` bracket lines.
+    Shows a total count at the end.
+    '''
     print(f"{INFO} Packages listed in {PACKAGES}:")
 
     with open(PACKAGES, "r") as f:
@@ -340,6 +411,12 @@ def list_pkgs():
     print(f"\n{INFO} Total packages: {len(pkgs)}")
 
 def search_pkgs(*pkgs):
+    '''
+    Searches nixpkgs for one or more packages. Checks all in parallel first.
+    If a package exists exactly, just confirms it. If not, shows similar
+    packages and lets the user pick one to install.
+    If not already root, re-invokes syd with sudo to handle the install.
+    '''
     # Check all packages in parallel
     with ThreadPoolExecutor() as executor:
         futures = {executor.submit(check_pkg_exists, pkg): pkg for pkg in pkgs}
@@ -383,6 +460,11 @@ def search_pkgs(*pkgs):
                 print(f"\n{INFO} Cancelled.")
 
 def is_installed(*pkgs):
+    '''
+    Checks if one or more packages appear in the packages file using word-boundary
+    regex. More accurate than a plain substring check, won't false-positive on
+    partial name matches.
+    '''
     with open(PACKAGES, "r") as f:
         lines = f.readlines()
 
@@ -397,6 +479,12 @@ def is_installed(*pkgs):
 # ------------------------------------------------------------
 
 def main():
+    '''
+    Entry point. Parses the subcommand and delegates to the right function.
+    setup_config() is called here (and redundantly again inside each branch —
+    that's worth cleaning up). Root check for install/remove/comment happens
+    before dispatch.
+    '''
     if len(sys.argv) < 2:
         help()
         sys.exit(0)
