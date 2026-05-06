@@ -84,7 +84,7 @@ def check_pkg_exists(pkg: str) -> bool:
             "--extra-experimental-features", "nix-command",
             "--extra-experimental-features", "flakes",
             "eval",
-            f"nixpkgs#{pkg}.meta.name"
+            f"nixpkgs#{pkg}.name"
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
