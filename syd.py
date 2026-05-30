@@ -265,11 +265,16 @@ def setup_config():
     return PACKAGES, REBUILD
 
 
+def _is_nh_command(cmd: str) -> bool:
+    '''Returns True if the rebuild command uses nh, which handles privilege escalation internally.'''
+    return cmd.strip().startswith("nh ")
+
 def rebuild_prompt():
     '''
     Asks whether to run the rebuild command after a config change.
     If already running as root and the command starts with `sudo`, strips it
-    to avoid a `sudo` inside a root shell.
+    to avoid a `sudo` inside a root shell — unless it's an nh command,
+    which handles escalation internally and should never be run as root.
     Exits with code 1 if the rebuild fails.
     Note: uses a hardcoded PATH to ensure NixOS tools are reachable.
     '''
@@ -279,7 +284,14 @@ def rebuild_prompt():
         return
 
     cmd = REBUILD.strip()
-    if os.geteuid() == 0 and cmd.startswith("sudo "):
+
+    if _is_nh_command(cmd):
+        # nh handles sudo internally; running it as root breaks things
+        if os.geteuid() == 0:
+            print(f"{ERROR} '{cmd}' should not be run as root. nh handles privilege escalation internally.")
+            print(f"{INFO} Run syd without sudo when using nh as your rebuild command.")
+            return
+    elif os.geteuid() == 0 and cmd.startswith("sudo "):
         cmd = cmd.replace("sudo ", "", 1)
         print(f"{INFO} Running (sudo stripped): {cmd}")
 
@@ -500,11 +512,16 @@ def main():
     global PACKAGES, REBUILD
     PACKAGES, REBUILD = setup_config()
 
-    # check for sudo in certain functions since they need elevated perms
+    # check if the packages file is writable before attempting modifications.
+    # this replaces the old root-only check, so nh users (who don't use sudo) work fine
+    # as long as their packages file is in a writable location.
     if subcommand in ["install", "remove", "comment"]:
-        if os.geteuid() != 0:
-            print(f"{ERROR} Root permissions required to modify {PACKAGES}")
-            print(f"{INFO} Try: sudo syd {subcommand} <package>")
+        if not os.access(PACKAGES, os.W_OK):
+            print(f"{ERROR} Cannot write to {PACKAGES}")
+            if _is_nh_command(REBUILD):
+                print(f"{INFO} Check file permissions: chmod u+w {PACKAGES}")
+            else:
+                print(f"{INFO} Try: sudo syd {subcommand} <package>")
             sys.exit(1)
 
     # syd install
