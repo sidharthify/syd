@@ -24,6 +24,8 @@ Options:
 ### Smart Search & Typo Detection
 If you misspell a package or search for a nested package such as `qtwebengine`, **syd** will automatically search nixpkgs and present a "Did you mean:" interactive menu. You can pick the correct package from the list to install it immediately. (This is probably my favourite feature)
 
+That search runs against a local index of nixpkgs stored under `~/.cache/syd`. The index is built once per nixpkgs version, which takes a few seconds, and after that every search is a local lookup instead of a nixpkgs evaluation. Delete the cache directory to force a rebuild.
+
 The config is stored in `~/.config/syd/config`, which remembers:
 
 * the default target file that holds your `# syd` marker
