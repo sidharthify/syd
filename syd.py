@@ -411,20 +411,77 @@ def check_pkg_exists(pkg: str) -> bool:
     return result.returncode == 0
 
 
-def check_pkgs_parallel(pkgs) -> dict:
+def nix_string(value: str) -> str:
+    '''Escapes a Python string for use inside a Nix string literal.'''
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def check_pkgs_batch(pkgs) -> dict:
     '''
-    Evaluates several packages at once and returns {pkg: bool}. Evaluation is
-    the slow part of a run, so spreading it over a worker per package keeps
-    multi-package commands quick.
+    Checks a whole list of packages with one nix evaluation and returns
+    {pkg: bool}, or None when the result cannot be trusted and the caller
+    should fall back to checking them one by one.
+
+    A single eval matters because loading nixpkgs is the expensive part. One
+    process for the list replaces one process per package, which cuts both the
+    wall time and the memory and CPU spent on multi-package commands.
+    '''
+    names = " ".join(f'"{nix_string(pkg)}"' for pkg in pkgs)
+    expression = (
+        'let flake = builtins.getFlake "nixpkgs"; '
+        'pkgs = flake.legacyPackages.${builtins.currentSystem}; '
+        'in map (n: if pkgs ? ${n} then pkgs.${n}.name else null) '
+        f'[ {names} ]'
+    )
+
+    result = subprocess.run(
+        [
+            NIX,
+            "--extra-experimental-features", "nix-command",
+            "--extra-experimental-features", "flakes",
+            "eval", "--json", "--impure", "--expr", expression,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+
+    try:
+        values = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(values, list) or len(values) != len(pkgs):
+        return None
+
+    return {pkg: value is not None for pkg, value in zip(pkgs, values)}
+
+
+def check_pkgs_one_by_one(pkgs) -> dict:
+    '''
+    Fallback path that evaluates each package separately, spread over a worker
+    per package. Kept for the rare cases the batch eval cannot answer.
+    '''
+    workers = min(len(pkgs), os.cpu_count() or 1)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(check_pkg_exists, pkg): pkg for pkg in pkgs}
+        return {futures[future]: future.result() for future in as_completed(futures)}
+
+
+def check_pkgs(pkgs) -> dict:
+    '''
+    Checks several packages and returns {pkg: bool}, preferring the single
+    batched eval and falling back to per-package checks when it fails.
     '''
     pkgs = list(pkgs)
     if not pkgs:
         return {}
 
-    workers = min(len(pkgs), os.cpu_count() or 1)
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(check_pkg_exists, pkg): pkg for pkg in pkgs}
-        return {futures[future]: future.result() for future in as_completed(futures)}
+    results = check_pkgs_batch(pkgs)
+    if results is None:
+        results = check_pkgs_one_by_one(pkgs)
+    return results
 
 
 def find_similar_packages(pkg: str) -> dict:
@@ -585,7 +642,7 @@ def install_pkgs(config: dict, pkgs, target: str, section) -> int:
         else:
             pending.append(pkg)
 
-    results = check_pkgs_parallel(pending)
+    results = check_pkgs(pending)
     indent = section_indent(lines, start, end)
     added = []
 
@@ -731,7 +788,7 @@ def search_pkgs(config: dict, pkgs, target_opt, section_opt) -> int:
     miss offers the similar-package prompt. A chosen package is installed,
     re-invoking syd through sudo when the caller is not root.
     '''
-    results = check_pkgs_parallel(pkgs)
+    results = check_pkgs(pkgs)
 
     for pkg in pkgs:
         if results[pkg]:
