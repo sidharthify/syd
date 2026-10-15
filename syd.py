@@ -22,6 +22,7 @@ import sys
 import json
 import stat
 import shutil
+import sqlite3
 import tempfile
 import datetime
 import subprocess
@@ -46,6 +47,12 @@ COMMANDS = {"install", "remove", "comment", "search", "has", "list"}
 # pkgs.nix on PATH, so shutil.which finds it there. The absolute path is a
 # fallback for running syd straight from a checkout on NixOS.
 NIX = shutil.which("nix") or "/run/current-system/sw/bin/nix"
+
+# Flakes and the nix-command CLI are needed for every nix call we make.
+NIX_FEATURES = [
+    "--extra-experimental-features", "nix-command",
+    "--extra-experimental-features", "flakes",
+]
 
 # A marker line tells syd where it may write. The bare form '# syd' is the
 # default section, and '# syd <label>' names one so a single file can hold
@@ -75,6 +82,12 @@ config_base = os.getenv("XDG_CONFIG_HOME", real_home / ".config")
 CONFIG_DIR = Path(config_base) / "syd"
 CONFIG_FILE = CONFIG_DIR / "config"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+# The package index is a local copy of the nixpkgs package list. It is keyed by
+# the resolved nixpkgs store path, so it is rebuilt only when nixpkgs changes.
+cache_base = os.getenv("XDG_CACHE_HOME", real_home / ".cache")
+CACHE_DIR = Path(cache_base) / "syd"
+INDEX_FILE = CACHE_DIR / "packages.sqlite"
 
 
 # ------------------------------------------------------------
@@ -400,8 +413,7 @@ def check_pkg_exists(pkg: str) -> bool:
     result = subprocess.run(
         [
             NIX,
-            "--extra-experimental-features", "nix-command",
-            "--extra-experimental-features", "flakes",
+            *NIX_FEATURES,
             "eval",
             f"nixpkgs#{pkg}.name",
         ],
@@ -425,20 +437,30 @@ def check_pkgs_batch(pkgs) -> dict:
     A single eval matters because loading nixpkgs is the expensive part. One
     process for the list replaces one process per package, which cuts both the
     wall time and the memory and CPU spent on multi-package commands.
+
+    Names are resolved as dotted attribute paths so nested packages such as
+    python311Packages.requests work, and tryEval keeps one unevaluable package
+    from sinking the whole batch.
     '''
     names = " ".join(f'"{nix_string(pkg)}"' for pkg in pkgs)
     expression = (
         'let flake = builtins.getFlake "nixpkgs"; '
         'pkgs = flake.legacyPackages.${builtins.currentSystem}; '
-        'in map (n: if pkgs ? ${n} then pkgs.${n}.name else null) '
+        'lib = pkgs.lib; '
+        'in map (n: '
+        'let attempt = builtins.tryEval ('
+        'let value = lib.attrByPath (lib.splitString "." n) null pkgs; '
+        'in if builtins.isAttrs value && value ? name then value.name else null'
+        '); '
+        'in if attempt.success then attempt.value else null'
+        ') '
         f'[ {names} ]'
     )
 
     result = subprocess.run(
         [
             NIX,
-            "--extra-experimental-features", "nix-command",
-            "--extra-experimental-features", "flakes",
+            *NIX_FEATURES,
             "eval", "--json", "--impure", "--expr", expression,
         ],
         capture_output=True,
@@ -469,49 +491,159 @@ def check_pkgs_one_by_one(pkgs) -> dict:
         return {futures[future]: future.result() for future in as_completed(futures)}
 
 
-def check_pkgs(pkgs) -> dict:
-    '''
-    Checks several packages and returns {pkg: bool}, preferring the single
-    batched eval and falling back to per-package checks when it fails.
-    '''
-    pkgs = list(pkgs)
-    if not pkgs:
-        return {}
+# ------------------------------------------------------------
+# PACKAGE INDEX
+# ------------------------------------------------------------
 
-    results = check_pkgs_batch(pkgs)
-    if results is None:
-        results = check_pkgs_one_by_one(pkgs)
-    return results
+_index_conn = None
+_index_identity = None
+_index_probed = False
+_index_built = False
 
 
-def find_similar_packages(pkg: str) -> dict:
+def nixpkgs_identity():
     '''
-    Runs `nix search nixpkgs <pkg> --json` and returns {name: description}
-    sorted so the closest matches come first. The score prefers exact and
-    prefix matches and penalises longer names and names with more hyphens, so
-    cleaner names float to the top. Returns an empty dict on failure.
+    Returns the resolved nixpkgs store path, or None when it cannot be read.
+    The index is tied to this value, so a nixpkgs update invalidates it.
     '''
-    print(f"{INFO} '{pkg}' not found exactly. Searching nixpkgs for similar packages (this may take a moment)...")
     result = subprocess.run(
-        [NIX, "search", "nixpkgs", pkg, "--json"],
+        [NIX, *NIX_FEATURES, "flake", "metadata", "nixpkgs", "--json"],
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0 or not result.stdout.strip():
-        return {}
+    if result.returncode != 0:
+        return None
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return {}
+        return None
 
-    packages = {}
+    locked = data.get("locked") or {}
+    return locked.get("path") or locked.get("rev") or data.get("fingerprint")
+
+
+def load_index(identity):
+    '''
+    Opens the cached index when it was built for this nixpkgs, otherwise None.
+    A connection is a local database handle, so from here existence and search
+    stop touching nixpkgs at all.
+    '''
+    if not INDEX_FILE.exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(INDEX_FILE)
+        row = conn.execute("SELECT value FROM meta WHERE key = 'nixpkgs'").fetchone()
+    except sqlite3.Error:
+        return None
+
+    if not row or row[0] != identity:
+        conn.close()
+        return None
+
+    return conn
+
+
+def build_index(identity):
+    '''
+    Builds a local copy of the nixpkgs package list. This is the one full
+    nixpkgs evaluation the tool pays, and until nixpkgs changes it turns every
+    search and existence check into a local lookup. Returns the fresh
+    connection, or None when the build fails.
+    '''
+    print(f"{INFO} Indexing nixpkgs for this revision, one moment...")
+    result = subprocess.run(
+        [NIX, *NIX_FEATURES, "search", "nixpkgs", "", "--json"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    rows = []
     for key, value in data.items():
         parts = key.split(".")
         if len(parts) >= 3:
-            name = ".".join(parts[2:])
-            packages[name] = value.get("description", "No description")
+            rows.append((".".join(parts[2:]), value.get("description") or ""))
 
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = INDEX_FILE.with_name(f"{INDEX_FILE.name}.{os.getpid()}.tmp")
+
+    try:
+        conn = sqlite3.connect(tmp)
+        conn.executescript(
+            "PRAGMA journal_mode=OFF;"
+            "PRAGMA synchronous=OFF;"
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);"
+            "CREATE TABLE packages (name TEXT PRIMARY KEY, description TEXT);"
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO packages (name, description) VALUES (?, ?)",
+            rows,
+        )
+        conn.execute("INSERT INTO meta (key, value) VALUES ('nixpkgs', ?)", (identity,))
+        conn.commit()
+        conn.close()
+        os.replace(tmp, INDEX_FILE)
+    except (sqlite3.Error, OSError):
+        if tmp.exists():
+            tmp.unlink()
+        return None
+
+    print(f"{SUCCESS} Indexed {len(rows)} packages.")
+    return load_index(identity)
+
+
+def get_index(build: bool):
+    '''
+    Returns the index connection for the current nixpkgs and builds it when
+    asked. The identity probe runs once per process, and existence checks skip
+    it entirely while no index exists so they cost nothing extra.
+    '''
+    global _index_conn, _index_identity, _index_probed, _index_built
+
+    if not _index_probed and (build or INDEX_FILE.exists()):
+        _index_probed = True
+        _index_identity = nixpkgs_identity()
+        if _index_identity is not None:
+            _index_conn = load_index(_index_identity)
+
+    if build and _index_conn is None and not _index_built and _index_probed:
+        _index_built = True
+        if _index_identity is not None:
+            _index_conn = build_index(_index_identity)
+
+    return _index_conn
+
+
+def like_escape(value: str) -> str:
+    '''Escapes LIKE wildcards so a package name is matched literally.'''
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def index_lookup(conn, pkg: str) -> dict:
+    '''Returns {name: description} for rows whose name or description matches.'''
+    pattern = f"%{like_escape(pkg)}%"
+    rows = conn.execute(
+        "SELECT name, description FROM packages "
+        "WHERE name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'",
+        (pattern, pattern),
+    ).fetchall()
+    return {name: (description or "No description") for name, description in rows}
+
+
+def rank_packages(packages: dict, pkg: str) -> dict:
+    '''
+    Orders matches so the closest names come first. Exact and prefix matches
+    score highest, and longer names and names with more hyphens sink, so clean
+    names float to the top.
+    '''
     needle = pkg.lower()
 
     def score(name):
@@ -535,6 +667,88 @@ def find_similar_packages(pkg: str) -> dict:
 
     ordered = sorted(packages, key=score)
     return {name: packages[name] for name in ordered}
+
+
+def check_pkgs(pkgs) -> dict:
+    '''
+    Checks several packages and returns {pkg: bool}. With the local index this
+    is a set of local lookups, and a nix evaluation is kept only for the names
+    the index does not carry.
+    '''
+    pkgs = list(pkgs)
+    if not pkgs:
+        return {}
+
+    conn = get_index(build=False)
+    results = {}
+    unknown = []
+
+    if conn is not None:
+        for pkg in pkgs:
+            found = conn.execute(
+                "SELECT 1 FROM packages WHERE name = ? LIMIT 1", (pkg,)
+            ).fetchone()
+            if found:
+                results[pkg] = True
+            else:
+                unknown.append(pkg)
+    else:
+        unknown = pkgs
+
+    if unknown:
+        fallback = check_pkgs_batch(unknown)
+        if fallback is None:
+            fallback = check_pkgs_one_by_one(unknown)
+        results.update(fallback)
+
+    return results
+
+
+def nix_search_packages(pkg: str) -> dict:
+    '''
+    Live search fallback that runs `nix search nixpkgs <pkg> --json` and
+    returns {name: description}. Used only when the local index is unavailable.
+    '''
+    result = subprocess.run(
+        [NIX, *NIX_FEATURES, "search", "nixpkgs", pkg, "--json"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return {}
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+
+    packages = {}
+    for key, value in data.items():
+        parts = key.split(".")
+        if len(parts) >= 3:
+            name = ".".join(parts[2:])
+            packages[name] = value.get("description", "No description")
+    return packages
+
+
+def find_similar_packages(pkg: str) -> dict:
+    '''
+    Returns {name: description} of packages similar to pkg, closest first, or
+    an empty dict when nothing matches. The local index answers this instantly
+    and the live search is only a fallback for when no index is available.
+    '''
+    print(f"{INFO} '{pkg}' not found exactly. Looking for similar packages...")
+
+    conn = get_index(build=True)
+    if conn is not None:
+        packages = index_lookup(conn, pkg)
+    else:
+        packages = nix_search_packages(pkg)
+
+    if not packages:
+        return {}
+
+    return rank_packages(packages, pkg)
 
 
 def choose_similar(pkg: str):
@@ -612,6 +826,8 @@ def help():
     print("  file of its own. Name a section with '# syd <label>' to keep several")
     print("  lists in one file, and end one early with '# syd-end' when needed.")
     print("  The bare marker answers to the name 'default'.\n")
+    print("  Similar-package search reads a local nixpkgs index, built once per")
+    print(f"  nixpkgs version and kept at {CACHE_DIR}.\n")
 
     print(f"{Fore.GREEN}EXAMPLES:{Style.RESET_ALL}")
     print("  sudo syd install vim htop curl")
