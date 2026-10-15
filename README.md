@@ -7,22 +7,27 @@ It lets you install, remove, list, and search for packages by directly editing y
 
 ## Usage
 
-* `syd install <pkg>` — add one or more packages to your saved Nix config
-* `syd remove <pkg>` — remove one or more packages from your config
-* `syd comment <pkg>` — comment one or more packages from your config
-* `syd search <pkg>` — search for a package in nixpkgs
-* `syd has <pkg>` — check if package is listed or not
-* `syd list` — print and count the number of installed packages
-* `syd --reset` — reset your stored config path and rebuild command
-* `syd --help` — show usage info
+* `syd install <pkg>`: write packages into the section marked with `# syd`
+* `syd remove <pkg>`: remove packages from the marked section
+* `syd comment <pkg>`: comment out packages in the marked section
+* `syd search <pkg>`: search for a package in nixpkgs
+* `syd has <pkg>`: check if a package is listed in the marked section
+* `syd list`: print and count the packages in the marked section
+* `syd --reset`: forget the stored target file and rebuild command
+* `syd --help`: show usage info
+
+Options:
+
+* `-t`, `--target <file>`: edit a different file (the default comes from the config)
+* `-s`, `--section <name>`: pick a named section when a file has several markers
 
 ### Smart Search & Typo Detection
-If you misspell a package or search for a nested package (e.g., `qtwebengine`), **syd** will automatically search nixpkgs and present a "Did you mean:" interactive menu. You can pick the correct package from the list to install it immediately. (This is probably my favourite feature)
+If you misspell a package or search for a nested package such as `qtwebengine`, **syd** will automatically search nixpkgs and present a "Did you mean:" interactive menu. You can pick the correct package from the list to install it immediately. (This is probably my favourite feature)
 
 The config is stored in `~/.config/syd/config`, which remembers:
 
-* your Nix packages file path (e.g. `/etc/nixos/packages.nix`)
-* your rebuild command (e.g. `sudo nixos-rebuild switch`)
+* the default target file that holds your `# syd` marker
+* your rebuild command (for example `sudo nixos-rebuild switch`)
 
 ---
 
@@ -125,33 +130,41 @@ syd --help
 
 ## Setting up your configuration
 
-If you haven’t modularized your Nix config yet, create a separate file to handle packages — for example `packages.nix`.
-
-Update your `configuration.nix` like this:
+Put a `# syd` line wherever you want syd to write packages. That can be a list
+you already have, so a separate file is not required:
 
 ```nix
-environment.systemPackages = import ./packages/packages.nix pkgs;
+environment.systemPackages = with pkgs; [
+  # syd
+];
 ```
 
-and structure your new file like:
+syd only writes between that marker and the end of the section. A section
+stops at a blank line, the list's closing bracket, or an explicit `# syd-end`
+line. You can also name a section, which is handy when a file holds more than
+one list:
 
 ```nix
-{ pkgs }: with pkgs; [
-  vim
-  wget
+home.packages = with pkgs; [
+  # syd gui
+  firefox
+  # syd-end
+
+  # syd cli
   git
-  # more packages...
-]
+];
 ```
 
-Now **syd** can manage this file automatically.
+Named sections are picked with `--section gui` or `--section cli`. To point at
+a different file for one command, use `--target ~/nix/home.nix`. The path can
+also carry the section name, as in `--target ~/nix/home.nix#gui`.
 
 ---
 
 ## Notes
 
 * syd was originally written in bash but is now entirely in **Python 3**, making it a lot faster.
-* It expects a single `packages.nix` file by default, but you can adapt it for your own layout.
+* It writes into the section marked with `# syd`, so it can manage a list inside any Nix file.
 For reference, see [my NixOS setup](https://github.com/sidharthify/nixos-configs) to understand how I structure my configs. (not the best, I'm aware)
 
 * An overview of syd's code can be found on [this blog](https://sidharthify.me/blogs/blog-18-10-25).
